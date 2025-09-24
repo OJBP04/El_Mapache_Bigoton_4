@@ -1,22 +1,136 @@
 import React, {useState, useEffect, useRef} from 'react';
 import {InputText} from 'primereact/inputtext';
-import {IconField} from 'primereact/iconfield';
 import {Button} from 'primereact/button';
 import {Toast} from 'primereact/toast';
 import {Toolbar} from 'primereact/toolbar';
 import {Dialog} from 'primereact/dialog';
-import {InputIcon} from "primereact/inputicon";
 import {classNames} from "primereact/utils";
 import BarberoService from "../Services/BarberoService.tsx";
 import { Card } from 'primereact/card';
 import { PanelMenu } from 'primereact/panelmenu';
 import type { MenuItem } from 'primereact/menuitem';
 import { Avatar } from 'primereact/avatar';
+import { DataTable } from 'primereact/datatable';
+import { Column } from 'primereact/column';
+import { InputNumber } from 'primereact/inputnumber';
 
 interface Barbero {
     idBarbero: number;
     nombre: string;
 }
+
+interface Servicio {
+    idServicio: number;
+    descripcion: string;
+    costo: number;
+}
+
+// Si no tienes ServicioService, usa el mock temporalmente
+// import ServicioService from "../Services/ServicioService.tsx";
+
+// Mock temporal hasta que tengas el ServicioService real
+const ServicioService = {
+    findAll: () => new Promise<{ data: Servicio[] }>(resolve => {
+        setTimeout(() => {
+            resolve({ data: [] }); // Array vacío para que se llene dinámicamente
+        }, 500);
+    }),
+    create: (servicio: Servicio) => new Promise<{ data: Servicio }>(resolve => {
+        setTimeout(() => {
+            const newId = Math.floor(Math.random() * 1000) + 10;
+            resolve({ data: { ...servicio, idServicio: newId } });
+        }, 500);
+    }),
+    update: (id: number, servicio: Servicio) => new Promise<{ data: Servicio }>(resolve => {
+        setTimeout(() => {
+            resolve({ data: { ...servicio, idServicio: id } });
+        }, 500);
+    }),
+    delete: (id: number) => new Promise<void>(resolve => {
+        setTimeout(() => {
+            console.log(`Servicio con ID ${id} eliminado.`);
+            resolve();
+        }, 500);
+    }),
+};
+
+// Estilos unificados para botones
+const buttonStyles = {
+    add: {
+        default: {
+            backgroundColor: 'transparent',
+            borderColor: '#10b981',
+            color: '#10b981',
+            transition: 'all 0.3s ease',
+        },
+        hover: {
+            backgroundColor: '#10b981',
+            borderColor: '#10b981',
+            color: 'white',
+            transform: 'scale(1.05)',
+        }
+    },
+    edit: {
+        default: {
+            backgroundColor: 'transparent',
+            borderColor: '#f59e0b',
+            color: '#f59e0b',
+            transition: 'all 0.3s ease',
+        },
+        hover: {
+            backgroundColor: '#f59e0b',
+            borderColor: '#f59e0b',
+            color: 'white',
+            transform: 'scale(1.05)',
+        }
+    },
+    delete: {
+        default: {
+            backgroundColor: 'transparent',
+            borderColor: '#ef4444',
+            color: '#ef4444',
+            transition: 'all 0.3s ease',
+        },
+        hover: {
+            backgroundColor: '#ef4444',
+            borderColor: '#ef4444',
+            color: 'white',
+            transform: 'scale(1.05)',
+        }
+    },
+    cancel: {
+        default: {
+            backgroundColor: 'transparent',
+            borderColor: '#6b7280',
+            color: '#6b7280',
+            transition: 'all 0.3s ease',
+        },
+        hover: {
+            backgroundColor: '#6b7280',
+            borderColor: '#6b7280',
+            color: 'white',
+            transform: 'scale(1.05)',
+        }
+    }
+};
+
+// Función para manejar hover de botones
+const handleButtonHover = (e: React.MouseEvent<HTMLButtonElement, MouseEvent>, buttonType: keyof typeof buttonStyles, isHovering: boolean) => {
+    const style = e.currentTarget.style;
+    const styleConfig = buttonStyles[buttonType];
+
+    if (isHovering) {
+        style.backgroundColor = styleConfig.hover.backgroundColor;
+        style.borderColor = styleConfig.hover.borderColor || styleConfig.default.borderColor;
+        style.color = styleConfig.hover.color;
+        style.transform = styleConfig.hover.transform;
+    } else {
+        style.backgroundColor = styleConfig.default.backgroundColor;
+        style.borderColor = styleConfig.default.borderColor;
+        style.color = styleConfig.default.color;
+        style.transform = 'scale(1)';
+    }
+};
 
 export default function CRUDBarberoComponent() {
     const emptyBarbero: Barbero = {
@@ -24,15 +138,25 @@ export default function CRUDBarberoComponent() {
         nombre: ''
     };
 
+    const emptyServicio: Servicio = {
+        idServicio: 0,
+        descripcion: '',
+        costo: 0
+    };
+
     const [barberos, setBarberos] = useState<Barbero[]>([]);
     const [barbero, setBarbero] = useState<Barbero>(emptyBarbero);
     const [barberoDialog, setBarberoDialog] = useState<boolean>(false);
     const [deleteBarberoDialog, setDeleteBarberoDialog] = useState<boolean>(false);
+
+    const [servicios, setServicios] = useState<Servicio[]>([]);
+    const [servicio, setServicio] = useState<Servicio>(emptyServicio);
+    const [servicioDialog, setServicioDialog] = useState<boolean>(false);
+    const [deleteServicioDialog, setDeleteServicioDialog] = useState<boolean>(false);
+
     const [submitted, setSubmitted] = useState<boolean>(false);
-    const [globalFilter, setGlobalFilter] = useState<string>('');
     const toast = useRef<Toast>(null);
 
-    // Estados para modos de eliminación y edición
     const [deleteMode, setDeleteMode] = useState<boolean>(false);
     const [editMode, setEditMode] = useState<boolean>(false);
 
@@ -43,6 +167,7 @@ export default function CRUDBarberoComponent() {
 
     useEffect(() => {
         BarberoService.findAll().then((response) => setBarberos(response.data));
+        ServicioService.findAll().then((response) => setServicios(response.data));
     }, []);
 
     const openNew = () => {
@@ -60,7 +185,6 @@ export default function CRUDBarberoComponent() {
         setDeleteBarberoDialog(false);
     };
 
-    // Función para activar/desactivar el modo de eliminación
     const toggleDeleteMode = () => {
         setDeleteMode(!deleteMode);
         if (!deleteMode && editMode) {
@@ -68,7 +192,6 @@ export default function CRUDBarberoComponent() {
         }
     };
 
-    // Función para activar/desactivar el modo de edición
     const toggleEditMode = () => {
         setEditMode(!editMode);
         if (!editMode && deleteMode) {
@@ -76,7 +199,6 @@ export default function CRUDBarberoComponent() {
         }
     };
 
-    // Función simplificada para editar un barbero directamente
     const selectBarberoToEdit = async (barbero: Barbero) => {
         if (!editMode) return;
         await editBarbero(barbero);
@@ -89,7 +211,6 @@ export default function CRUDBarberoComponent() {
             const _barbero = {...barbero};
 
             if (barbero.idBarbero) {
-                // Actualizar barbero existente
                 BarberoService.update(barbero.idBarbero, _barbero);
                 const index = findIndexById(barbero.idBarbero);
                 _barberos[index] = _barbero;
@@ -101,7 +222,6 @@ export default function CRUDBarberoComponent() {
                     life: 3000
                 });
             } else {
-                // Crear nuevo barbero
                 _barbero.idBarbero = await getIdBarbero(_barbero);
                 _barberos.push(_barbero);
                 toast.current?.show({
@@ -170,14 +290,104 @@ export default function CRUDBarberoComponent() {
         setBarbero(_barbero);
     };
 
-    const leftToolbarTemplate = () => {
-        return null; // Ya no se necesita, todo está en el header
+    const openNewServicio = () => {
+        setServicio(emptyServicio);
+        setSubmitted(false);
+        setServicioDialog(true);
     };
 
-    // Filtrar barberos
-    const filteredBarberos = barberos.filter((barbero) =>
-        barbero.nombre.toLowerCase().includes(globalFilter.toLowerCase())
-    );
+    const hideServicioDialog = () => {
+        setSubmitted(false);
+        setServicioDialog(false);
+    };
+
+    const hideDeleteServicioDialog = () => {
+        setDeleteServicioDialog(false);
+    };
+
+    const saveServicio = async () => {
+        setSubmitted(true);
+        if (servicio.descripcion.trim() && servicio.costo > 0) {
+            const _servicios = [...servicios];
+            const _servicio = {...servicio};
+
+            if (_servicio.idServicio) {
+                ServicioService.update(_servicio.idServicio, _servicio);
+                const index = findIndexServicioById(_servicio.idServicio);
+                _servicios[index] = _servicio;
+                toast.current?.show({
+                    severity: 'success',
+                    summary: 'Éxito',
+                    detail: 'Servicio Actualizado',
+                    life: 3000
+                });
+            } else {
+                _servicio.idServicio = await getIdServicio(_servicio);
+                _servicios.push(_servicio);
+                toast.current?.show({
+                    severity: 'success',
+                    summary: 'Éxito',
+                    detail: 'Servicio Creado',
+                    life: 3000
+                });
+            }
+
+            setServicios(_servicios);
+            setServicioDialog(false);
+            setServicio(emptyServicio);
+        }
+    };
+
+    const getIdServicio = async (_servicio: Servicio) => {
+        let idServicio = 0;
+        await ServicioService.create(_servicio).then((response)=>{
+            idServicio = response.data.idServicio;
+        }).catch(error=>{
+            console.log(error);
+        });
+        return idServicio;
+    };
+
+    const editServicio = (servicio: Servicio) => {
+        setServicio({...servicio});
+        setServicioDialog(true);
+    };
+
+    const confirmDeleteServicio = (servicio: Servicio) => {
+        setServicio(servicio);
+        setDeleteServicioDialog(true);
+    };
+
+    const deleteServicio = () => {
+        const _servicios = servicios.filter((val) => val.idServicio !== servicio.idServicio);
+        ServicioService.delete(servicio.idServicio);
+        setServicios(_servicios);
+        setDeleteServicioDialog(false);
+        setServicio(emptyServicio);
+        toast.current?.show({severity: 'success', summary: 'Resultado', detail: 'Servicio Eliminado', life: 3000});
+    };
+
+    const findIndexServicioById = (idServicio: number) => {
+        let index = -1;
+        for (let i = 0; i < servicios.length; i++) {
+            if(servicios[i].idServicio === idServicio) {
+                index = i;
+                break;
+            }
+        }
+        return index;
+    };
+
+    const onServicioInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const val = (e.target && e.target.value)||"";
+        const _servicio = {...servicio};
+        _servicio.descripcion = val;
+        setServicio(_servicio);
+    };
+
+    const leftToolbarTemplate = () => {
+        return null;
+    };
 
     const barberoDialogFooter = (
         <React.Fragment>
@@ -185,11 +395,18 @@ export default function CRUDBarberoComponent() {
                 label="Cancelar"
                 icon="pi pi-times"
                 outlined
+                style={buttonStyles.cancel.default}
+                onMouseEnter={(e) => handleButtonHover(e, 'cancel', true)}
+                onMouseLeave={(e) => handleButtonHover(e, 'cancel', false)}
                 onClick={hideDialog}
             />
             <Button
                 label="Guardar"
                 icon="pi pi-check"
+                outlined
+                style={buttonStyles.add.default}
+                onMouseEnter={(e) => handleButtonHover(e, 'add', true)}
+                onMouseLeave={(e) => handleButtonHover(e, 'add', false)}
                 onClick={saveBarbero}
             />
         </React.Fragment>
@@ -201,16 +418,93 @@ export default function CRUDBarberoComponent() {
                 label="No"
                 icon="pi pi-times"
                 outlined
+                style={buttonStyles.cancel.default}
+                onMouseEnter={(e) => handleButtonHover(e, 'cancel', true)}
+                onMouseLeave={(e) => handleButtonHover(e, 'cancel', false)}
                 onClick={hideDeleteBarberoDialog}
             />
             <Button
                 label="Sí"
                 icon="pi pi-check"
-                severity="danger"
+                outlined
+                style={buttonStyles.delete.default}
+                onMouseEnter={(e) => handleButtonHover(e, 'delete', true)}
+                onMouseLeave={(e) => handleButtonHover(e, 'delete', false)}
                 onClick={deleteBarbero}
             />
         </React.Fragment>
     );
+
+    const servicioDialogFooter = (
+        <React.Fragment>
+            <Button
+                label="Cancelar"
+                icon="pi pi-times"
+                outlined
+                style={buttonStyles.cancel.default}
+                onMouseEnter={(e) => handleButtonHover(e, 'cancel', true)}
+                onMouseLeave={(e) => handleButtonHover(e, 'cancel', false)}
+                onClick={hideServicioDialog}
+            />
+            <Button
+                label="Guardar"
+                icon="pi pi-check"
+                outlined
+                style={buttonStyles.add.default}
+                onMouseEnter={(e) => handleButtonHover(e, 'add', true)}
+                onMouseLeave={(e) => handleButtonHover(e, 'add', false)}
+                onClick={saveServicio}
+            />
+        </React.Fragment>
+    );
+
+    const deleteServicioDialogFooter = (
+        <React.Fragment>
+            <Button
+                label="No"
+                icon="pi pi-times"
+                outlined
+                style={buttonStyles.cancel.default}
+                onMouseEnter={(e) => handleButtonHover(e, 'cancel', true)}
+                onMouseLeave={(e) => handleButtonHover(e, 'cancel', false)}
+                onClick={hideDeleteServicioDialog}
+            />
+            <Button
+                label="Sí"
+                icon="pi pi-check"
+                outlined
+                style={buttonStyles.delete.default}
+                onMouseEnter={(e) => handleButtonHover(e, 'delete', true)}
+                onMouseLeave={(e) => handleButtonHover(e, 'delete', false)}
+                onClick={deleteServicio}
+            />
+        </React.Fragment>
+    );
+
+    const actionBodyTemplate = (rowData: Servicio) => {
+        return (
+            <div className="flex flex-wrap gap-2">
+                <Button
+                    icon="pi pi-pencil"
+                    rounded
+                    outlined
+                    style={buttonStyles.edit.default}
+                    onMouseEnter={(e) => handleButtonHover(e, 'edit', true)}
+                    onMouseLeave={(e) => handleButtonHover(e, 'edit', false)}
+                    onClick={() => editServicio(rowData)}
+                />
+                <Button
+                    icon="pi pi-trash"
+                    rounded
+                    outlined
+                    style={buttonStyles.delete.default}
+                    onMouseEnter={(e) => handleButtonHover(e, 'delete', true)}
+                    onMouseLeave={(e) => handleButtonHover(e, 'delete', false)}
+                    onClick={() => confirmDeleteServicio(rowData)}
+                />
+            </div>
+        );
+    };
 
     const header = (
         <div className="header-container" style={{
@@ -231,23 +525,7 @@ export default function CRUDBarberoComponent() {
                 {editMode && <span className="modo-editar" style={{fontSize: '1.2rem'}}> (Editar)</span>}
             </h2>
 
-            {/* Iconos de acciones */}
             <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-                {/* Buscar */}
-                <IconField iconPosition="left">
-                    <InputIcon className="pi pi-search" />
-                    <InputText
-                        type="search"
-                        placeholder="Buscar barberos..."
-                        className="buscar-input"
-                        onInput={(e) => {
-                            const target = e.target as HTMLInputElement;
-                            setGlobalFilter(target.value);
-                        }}
-                    />
-                </IconField>
-
-                {/* Botón Eliminar/Salir */}
                 {deleteMode ? (
                     <div style={{
                         borderRadius: '50%',
@@ -258,11 +536,29 @@ export default function CRUDBarberoComponent() {
                         justifyContent: 'center',
                         cursor: 'pointer',
                         boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
-                        border: '2px solid #6b7280'
-                    }}>
+                        border: `2px solid ${buttonStyles.cancel.default.borderColor}`,
+                        backgroundColor: buttonStyles.cancel.default.backgroundColor,
+                        transition: 'all 0.3s ease'
+                    }}
+                         onMouseEnter={(e) => {
+                             e.currentTarget.style.backgroundColor = buttonStyles.cancel.hover.backgroundColor;
+                             e.currentTarget.style.color = buttonStyles.cancel.hover.color;
+                             e.currentTarget.style.transform = buttonStyles.cancel.hover.transform;
+                             const icon = e.currentTarget.querySelector('i');
+                             if (icon) icon.style.color = buttonStyles.cancel.hover.color;
+                         }}
+                         onMouseLeave={(e) => {
+                             e.currentTarget.style.backgroundColor = buttonStyles.cancel.default.backgroundColor;
+                             e.currentTarget.style.color = buttonStyles.cancel.default.color;
+                             e.currentTarget.style.transform = 'scale(1)';
+                             e.currentTarget.style.border = `2px solid ${buttonStyles.cancel.default.borderColor}`;
+                             const icon = e.currentTarget.querySelector('i');
+                             if (icon) icon.style.color = buttonStyles.cancel.default.color;
+                         }}>
                         <i className="pi pi-times" style={{
-                            color: '#6b7280',
-                            fontSize: '1.2rem'
+                            color: buttonStyles.cancel.default.color,
+                            fontSize: '1.2rem',
+                            transition: 'color 0.3s ease'
                         }} onClick={toggleDeleteMode}></i>
                     </div>
                 ) : !editMode && (
@@ -275,16 +571,33 @@ export default function CRUDBarberoComponent() {
                         justifyContent: 'center',
                         cursor: 'pointer',
                         boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
-                        border: '2px solid #f44336'
-                    }}>
+                        border: `2px solid ${buttonStyles.delete.default.borderColor}`,
+                        backgroundColor: buttonStyles.delete.default.backgroundColor,
+                        transition: 'all 0.3s ease'
+                    }}
+                         onMouseEnter={(e) => {
+                             e.currentTarget.style.backgroundColor = buttonStyles.delete.hover.backgroundColor;
+                             e.currentTarget.style.color = buttonStyles.delete.hover.color;
+                             e.currentTarget.style.transform = buttonStyles.delete.hover.transform;
+                             const icon = e.currentTarget.querySelector('i');
+                             if (icon) icon.style.color = buttonStyles.delete.hover.color;
+                         }}
+                         onMouseLeave={(e) => {
+                             e.currentTarget.style.backgroundColor = buttonStyles.delete.default.backgroundColor;
+                             e.currentTarget.style.color = buttonStyles.delete.default.color;
+                             e.currentTarget.style.transform = 'scale(1)';
+                             e.currentTarget.style.border = `2px solid ${buttonStyles.delete.default.borderColor}`;
+                             const icon = e.currentTarget.querySelector('i');
+                             if (icon) icon.style.color = buttonStyles.delete.default.color;
+                         }}>
                         <i className="pi pi-trash" style={{
-                            color: '#f44336',
-                            fontSize: '1.2rem'
+                            color: buttonStyles.delete.default.color,
+                            fontSize: '1.2rem',
+                            transition: 'color 0.3s ease'
                         }} onClick={toggleDeleteMode}></i>
                     </div>
                 )}
 
-                {/* Botón Editar/Salir */}
                 {editMode ? (
                     <div style={{
                         borderRadius: '50%',
@@ -295,11 +608,29 @@ export default function CRUDBarberoComponent() {
                         justifyContent: 'center',
                         cursor: 'pointer',
                         boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
-                        border: '2px solid #6b7280'
-                    }}>
+                        border: `2px solid ${buttonStyles.cancel.default.borderColor}`,
+                        backgroundColor: buttonStyles.cancel.default.backgroundColor,
+                        transition: 'all 0.3s ease'
+                    }}
+                         onMouseEnter={(e) => {
+                             e.currentTarget.style.backgroundColor = buttonStyles.cancel.hover.backgroundColor;
+                             e.currentTarget.style.color = buttonStyles.cancel.hover.color;
+                             e.currentTarget.style.transform = buttonStyles.cancel.hover.transform;
+                             const icon = e.currentTarget.querySelector('i');
+                             if (icon) icon.style.color = buttonStyles.cancel.hover.color;
+                         }}
+                         onMouseLeave={(e) => {
+                             e.currentTarget.style.backgroundColor = buttonStyles.cancel.default.backgroundColor;
+                             e.currentTarget.style.color = buttonStyles.cancel.default.color;
+                             e.currentTarget.style.transform = 'scale(1)';
+                             e.currentTarget.style.border = `2px solid ${buttonStyles.cancel.default.borderColor}`;
+                             const icon = e.currentTarget.querySelector('i');
+                             if (icon) icon.style.color = buttonStyles.cancel.default.color;
+                         }}>
                         <i className="pi pi-times" style={{
-                            color: '#6b7280',
-                            fontSize: '1.2rem'
+                            color: buttonStyles.cancel.default.color,
+                            fontSize: '1.2rem',
+                            transition: 'color 0.3s ease'
                         }} onClick={toggleEditMode}></i>
                     </div>
                 ) : !deleteMode && (
@@ -312,16 +643,33 @@ export default function CRUDBarberoComponent() {
                         justifyContent: 'center',
                         cursor: 'pointer',
                         boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
-                        border: '2px solid #ff9800'
-                    }}>
+                        border: `2px solid ${buttonStyles.edit.default.borderColor}`,
+                        backgroundColor: buttonStyles.edit.default.backgroundColor,
+                        transition: 'all 0.3s ease'
+                    }}
+                         onMouseEnter={(e) => {
+                             e.currentTarget.style.backgroundColor = buttonStyles.edit.hover.backgroundColor;
+                             e.currentTarget.style.color = buttonStyles.edit.hover.color;
+                             e.currentTarget.style.transform = buttonStyles.edit.hover.transform;
+                             const icon = e.currentTarget.querySelector('i');
+                             if (icon) icon.style.color = buttonStyles.edit.hover.color;
+                         }}
+                         onMouseLeave={(e) => {
+                             e.currentTarget.style.backgroundColor = buttonStyles.edit.default.backgroundColor;
+                             e.currentTarget.style.color = buttonStyles.edit.default.color;
+                             e.currentTarget.style.transform = 'scale(1)';
+                             e.currentTarget.style.border = `2px solid ${buttonStyles.edit.default.borderColor}`;
+                             const icon = e.currentTarget.querySelector('i');
+                             if (icon) icon.style.color = buttonStyles.edit.default.color;
+                         }}>
                         <i className="pi pi-pencil" style={{
-                            color: '#ff9800',
-                            fontSize: '1.2rem'
+                            color: buttonStyles.edit.default.color,
+                            fontSize: '1.2rem',
+                            transition: 'color 0.3s ease'
                         }} onClick={toggleEditMode}></i>
                     </div>
                 )}
 
-                {/* Botón Nuevo - Solo visible cuando no está en modo editar o eliminar */}
                 {!editMode && !deleteMode && (
                     <div className="boton-plus-container" style={{
                         borderRadius: '50%',
@@ -332,11 +680,29 @@ export default function CRUDBarberoComponent() {
                         justifyContent: 'center',
                         cursor: 'pointer',
                         boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
-                        border: '2px solid #4CAF50'
-                    }}>
+                        border: `2px solid ${buttonStyles.add.default.borderColor}`,
+                        backgroundColor: buttonStyles.add.default.backgroundColor,
+                        transition: 'all 0.3s ease'
+                    }}
+                         onMouseEnter={(e) => {
+                             e.currentTarget.style.backgroundColor = buttonStyles.add.hover.backgroundColor;
+                             e.currentTarget.style.color = buttonStyles.add.hover.color;
+                             e.currentTarget.style.transform = buttonStyles.add.hover.transform;
+                             const icon = e.currentTarget.querySelector('i');
+                             if (icon) icon.style.color = buttonStyles.add.hover.color;
+                         }}
+                         onMouseLeave={(e) => {
+                             e.currentTarget.style.backgroundColor = buttonStyles.add.default.backgroundColor;
+                             e.currentTarget.style.color = buttonStyles.add.default.color;
+                             e.currentTarget.style.transform = 'scale(1)';
+                             e.currentTarget.style.border = `2px solid ${buttonStyles.add.default.borderColor}`;
+                             const icon = e.currentTarget.querySelector('i');
+                             if (icon) icon.style.color = buttonStyles.add.default.color;
+                         }}>
                         <i className="pi pi-plus boton-plus-icon" style={{
-                            color: '#4CAF50',
-                            fontSize: '1.2rem'
+                            color: buttonStyles.add.default.color,
+                            fontSize: '1.2rem',
+                            transition: 'color 0.3s ease'
                         }} onClick={openNew}></i>
                     </div>
                 )}
@@ -348,7 +714,6 @@ export default function CRUDBarberoComponent() {
         <div style={{ display: 'flex' }}>
             <Toast ref={toast} />
 
-            {/* Barra superior */}
             <div className="topbar" style={{
                 position: 'fixed',
                 top: 0,
@@ -368,7 +733,6 @@ export default function CRUDBarberoComponent() {
                 <i className="pi pi-bell" style={{ fontSize: '1.5rem' }}></i>
             </div>
 
-            {/* Sidebar */}
             <div className="sidebar" style={{
                 width: '250px',
                 borderRight: '1px solid #ccc',
@@ -382,7 +746,6 @@ export default function CRUDBarberoComponent() {
                 <PanelMenu model={sidebarItems} style={{ width: '100%' }} />
             </div>
 
-            {/* Contenido principal */}
             <div className="main-content" style={{
                 flexGrow: 1,
                 marginLeft: '250px',
@@ -393,7 +756,6 @@ export default function CRUDBarberoComponent() {
                     borderRadius: '16px',
                     overflow: 'hidden'
                 }}>
-                    {/* Encabezado */}
                     {header}
 
                     <Toolbar
@@ -406,10 +768,8 @@ export default function CRUDBarberoComponent() {
                         }}
                     />
 
-                    {/* Tarjetas de barberos */}
                     <div className="grid p-1 gap-10">
-                        {filteredBarberos.map((barbero) => {
-                            // Obtenemos la primera letra del nombre para el Avatar
+                        {barberos.map((barbero) => {
                             const firstLetter = barbero.nombre.charAt(0).toUpperCase();
 
                             return (
@@ -440,11 +800,9 @@ export default function CRUDBarberoComponent() {
                                             ...(editMode ? {
                                                 border: '2px dashed #f59e0b',
                                                 boxShadow: '0 0 15px rgba(245, 158, 11, 0.4)',
-                                                // Se remueve el backgroundColor para que no sea claro
                                             } : deleteMode ? {
                                                 border: '2px dashed #ef4444',
                                                 boxShadow: '0 0 15px rgba(239, 68, 68, 0.4)',
-                                                // Se remueve el backgroundColor para que no sea claro
                                             } : {}),
                                             borderRadius: '12px',
                                             transition: 'all 0.3s ease',
@@ -473,24 +831,22 @@ export default function CRUDBarberoComponent() {
                                         {editMode && (
                                             <div className="flex justify-content-center align-items-center gap-2" style={{
                                                 padding: '0.75rem',
-                                                // Se elimina el backgroundColor para mantener el color de fondo original
                                                 borderRadius: '8px',
                                                 border: '1px solid rgba(245, 158, 11, 0.3)'
                                             }}>
                                                 <i className="pi pi-pencil" style={{color: '#f59e0b', fontSize: '1.2rem'}}></i>
-                                                <span style={{color: '#d97706', fontWeight: '600'}}>Click para editar</span>
+                                                <span style={{color: '#f59e0b', fontWeight: '600'}}>Click para editar</span>
                                             </div>
                                         )}
 
                                         {deleteMode && (
                                             <div className="flex justify-content-center align-items-center gap-2" style={{
                                                 padding: '0.75rem',
-                                                // Se elimina el backgroundColor para mantener el color de fondo original
                                                 borderRadius: '8px',
                                                 border: '1px solid rgba(239, 68, 68, 0.3)'
                                             }}>
                                                 <i className="pi pi-trash" style={{color: '#ef4444', fontSize: '1.2rem'}}></i>
-                                                <span style={{color: '#dc2626', fontWeight: '600'}}>Click para eliminar</span>
+                                                <span style={{color: '#ef4444', fontWeight: '600'}}>Click para eliminar</span>
                                             </div>
                                         )}
                                     </Card>
@@ -499,8 +855,7 @@ export default function CRUDBarberoComponent() {
                         })}
                     </div>
 
-                    {/* Mensaje cuando no hay barberos */}
-                    {filteredBarberos.length === 0 && (
+                    {barberos.length === 0 && (
                         <div style={{
                             textAlign: 'center',
                             padding: '3rem',
@@ -513,22 +868,60 @@ export default function CRUDBarberoComponent() {
                                 </>
                             ) : (
                                 <>
-                                    <i className="pi pi-search" style={{fontSize: '3rem', marginBottom: '1rem', display: 'block'}} />
-                                    <p>No se encontraron barberos que coincidan con "{globalFilter}"</p>
+
                                 </>
                             )}
                         </div>
                     )}
                 </div>
 
-                {/* Dialog para crear/editar barbero */}
+                <div className="card mt-5" style={{
+                    borderRadius: '16px',
+                    overflow: 'hidden',
+                }}>
+                    <div className="header-container" style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        padding: '1rem 0',
+                        borderBottom: '1px solid #ddd',
+                        marginBottom: '1rem'
+                    }}>
+                        <h2 className="titulo-principal" style={{
+                            margin: 0,
+                            fontSize: '2rem',
+                            fontWeight: 'bold'
+                        }}>
+                            Servicios
+                        </h2>
+                        <Button
+                            icon="pi pi-plus"
+                            rounded
+                            outlined
+                            style={buttonStyles.add.default}
+                            onMouseEnter={(e) => handleButtonHover(e, 'add', true)}
+                            onMouseLeave={(e) => handleButtonHover(e, 'add', false)}
+                            onClick={openNewServicio}
+                        />
+                    </div>
+                    <DataTable value={servicios} tableStyle={{ minWidth: '50rem' }}>
+                        <Column field="descripcion" header="Descripción del Servicio"></Column>
+                        <Column field="costo" header="Costo" body={(rowData) => `${rowData.costo}`}></Column>
+                        <Column
+                            header="Acciones"
+                            body={actionBodyTemplate}
+                            style={{ minWidth: '8rem', textAlign: 'center' }}
+                        />
+                    </DataTable>
+                </div>
+
                 <Dialog
                     visible={barberoDialog}
                     style={{ width: '32rem' }}
                     breakpoints={{ '960px': '75vw', '641px': '90vw' }}
                     header={
                         <div className="flex align-items-center gap-2">
-                            <i className="pi pi-user" style={{color: '#ff9800'}}></i>
+                            <i className="pi pi-user" style={{color: '#f59e0b'}}></i>
                             <span style={{color: '#333', fontWeight: '600'}}>Detalles del Barbero</span>
                         </div>
                     }
@@ -564,7 +957,6 @@ export default function CRUDBarberoComponent() {
                     </div>
                 </Dialog>
 
-                {/* Dialog para confirmar eliminación */}
                 <Dialog
                     visible={deleteBarberoDialog}
                     style={{ width: '32rem' }}
@@ -593,6 +985,102 @@ export default function CRUDBarberoComponent() {
                             }}>
                                 ¿Estás seguro de eliminar al barbero <br/>
                                 <strong style={{ color: '#ef4444', fontSize: '1.2rem' }}>"{barbero.nombre}"</strong>?
+                            </span>
+                        )}
+                    </div>
+                </Dialog>
+
+                <Dialog
+                    visible={servicioDialog}
+                    style={{ width: '32rem' }}
+                    breakpoints={{ '960px': '75vw', '641px': '90vw' }}
+                    header={
+                        <div className="flex align-items-center gap-2">
+                            <i className="pi pi-cog" style={{color: '#059669'}}></i>
+                            <span style={{color: '#333', fontWeight: '600'}}>Detalles del Servicio</span>
+                        </div>
+                    }
+                    modal
+                    className="p-fluid"
+                    footer={servicioDialogFooter}
+                    onHide={hideServicioDialog}
+                >
+                    <div className="field">
+                        <label htmlFor="descripcion" className="font-bold" style={{
+                            color: '#333',
+                            marginBottom: '0.5rem',
+                            display: 'block'
+                        }}>
+                            Descripción
+                        </label>
+                        <InputText
+                            id="descripcion"
+                            value={servicio.descripcion}
+                            onChange={onServicioInputChange}
+                            required
+                            className={classNames({'p-invalid': submitted && !servicio.descripcion})}
+                            style={{
+                                borderRadius: '8px',
+                                padding: '0.75rem',
+                                transition: 'all 0.3s ease'
+                            }}
+                        />
+                        {submitted && !servicio.descripcion && <small className="p-error">La descripción es requerida.</small>}
+                    </div>
+
+                    <div className="field">
+                        <label htmlFor="costo" className="font-bold" style={{
+                            color: '#333',
+                            marginBottom: '0.5rem',
+                            display: 'block'
+                        }}>
+                            Costo
+                        </label>
+                        <InputNumber
+                            id="costo"
+                            value={servicio.costo}
+                            onValueChange={(e) => setServicio({...servicio, costo: e.value || 0})}
+                            mode="currency"
+                            currency="MXN"
+                            locale="es-MX"
+                            required
+                            className={classNames({'p-invalid': submitted && !servicio.costo})}
+                            style={{
+                                borderRadius: '8px'
+                            }}
+                        />
+                        {submitted && !servicio.costo && <small className="p-error">El costo es requerido.</small>}
+                    </div>
+                </Dialog>
+
+                <Dialog
+                    visible={deleteServicioDialog}
+                    style={{ width: '32rem' }}
+                    breakpoints={{ '960px': '75vw', '641px': '90vw' }}
+                    header={
+                        <div className="flex align-items-center gap-2">
+                            <i className="pi pi-exclamation-triangle" style={{color: '#ef4444'}}></i>
+                            <span style={{color: '#333', fontWeight: '600'}}>Confirmar Eliminación</span>
+                        </div>
+                    }
+                    modal
+                    footer={deleteServicioDialogFooter}
+                    onHide={hideDeleteServicioDialog}
+                >
+                    <div className="confirmation-content flex align-items-center gap-3 p-3" style={{
+                        backgroundColor: 'rgba(239, 68, 68, 0.05)',
+                        borderRadius: '8px',
+                        border: '1px solid rgba(239, 68, 68, 0.1)'
+                    }}>
+                        <i className="pi pi-exclamation-triangle text-3xl" style={{ color: '#ef4444' }} />
+                        {servicio && (
+                            <span style={{
+                                color: '#333',
+                                fontSize: '1.1rem',
+                                lineHeight: '1.5'
+                            }}>
+                                ¿Estás seguro de eliminar el servicio: <br/>
+                                <strong style={{color: '#ef4444', fontSize: '1.2rem'}}>"{servicio.descripcion}"</strong>?
                             </span>
                         )}
                     </div>
