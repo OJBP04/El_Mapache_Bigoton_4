@@ -6,6 +6,7 @@ import {Toolbar} from 'primereact/toolbar';
 import {Dialog} from 'primereact/dialog';
 import {classNames} from "primereact/utils";
 import BarberoService from "../Services/BarberoService.tsx";
+import ServicioService from "../Services/ServicioService.tsx";
 import { Card } from 'primereact/card';
 import { PanelMenu } from 'primereact/panelmenu';
 import type { MenuItem } from 'primereact/menuitem';
@@ -25,34 +26,9 @@ interface Servicio {
     costo: number;
 }
 
-// Si no tienes ServicioService, usa el mock temporalmente
-// import ServicioService from "../Services/ServicioService.tsx";
-
-// Mock temporal hasta que tengas el ServicioService real
-const ServicioService = {
-    findAll: () => new Promise<{ data: Servicio[] }>(resolve => {
-        setTimeout(() => {
-            resolve({ data: [] }); // Array vacío para que se llene dinámicamente
-        }, 500);
-    }),
-    create: (servicio: Servicio) => new Promise<{ data: Servicio }>(resolve => {
-        setTimeout(() => {
-            const newId = Math.floor(Math.random() * 1000) + 10;
-            resolve({ data: { ...servicio, idServicio: newId } });
-        }, 500);
-    }),
-    update: (id: number, servicio: Servicio) => new Promise<{ data: Servicio }>(resolve => {
-        setTimeout(() => {
-            resolve({ data: { ...servicio, idServicio: id } });
-        }, 500);
-    }),
-    delete: (id: number) => new Promise<void>(resolve => {
-        setTimeout(() => {
-            console.log(`Servicio con ID ${id} eliminado.`);
-            resolve();
-        }, 500);
-    }),
-};
+// -------------------------------------------------------------
+// Se ha eliminado el mock temporal de ServicioService
+// -------------------------------------------------------------
 
 // Estilos unificados para botones
 const buttonStyles = {
@@ -165,9 +141,42 @@ export default function CRUDBarberoComponent() {
         { label: 'Catálogos', icon: 'pi pi-pen-to-square', url: '/catalogos' },
     ];
 
+    // Función para recargar los servicios desde el backend
+    const loadServicios = async () => {
+        try {
+            const response = await ServicioService.findAll();
+            setServicios(response.data);
+        } catch (error) {
+            console.error("Error al obtener los servicios:", error);
+            toast.current?.show({
+                severity: 'error',
+                summary: 'Error',
+                detail: 'No se pudieron cargar los servicios',
+                life: 3000
+            });
+        }
+    };
+
+    // Función para recargar los barberos desde el backend
+    const loadBarberos = async () => {
+        try {
+            const response = await BarberoService.findAll();
+            setBarberos(response.data);
+        } catch (error) {
+            console.error("Error al obtener los barberos:", error);
+            toast.current?.show({
+                severity: 'error',
+                summary: 'Error',
+                detail: 'No se pudieron cargar los barberos',
+                life: 3000
+            });
+        }
+    };
+
+    // Al cargar el componente, llama a la API para obtener barberos y servicios
     useEffect(() => {
-        BarberoService.findAll().then((response) => setBarberos(response.data));
-        ServicioService.findAll().then((response) => setServicios(response.data));
+        loadBarberos();
+        loadServicios();
     }, []);
 
     const openNew = () => {
@@ -207,45 +216,37 @@ export default function CRUDBarberoComponent() {
     const saveBarbero = async () => {
         setSubmitted(true);
         if (barbero.nombre.trim()) {
-            const _barberos = [...barberos];
-            const _barbero = {...barbero};
-
-            if (barbero.idBarbero) {
-                BarberoService.update(barbero.idBarbero, _barbero);
-                const index = findIndexById(barbero.idBarbero);
-                _barberos[index] = _barbero;
-
+            try {
+                if (barbero.idBarbero) {
+                    await BarberoService.update(barbero.idBarbero, barbero);
+                    toast.current?.show({
+                        severity: 'success',
+                        summary: 'Éxito',
+                        detail: 'Barbero Actualizado',
+                        life: 3000
+                    });
+                } else {
+                    await BarberoService.create(barbero);
+                    toast.current?.show({
+                        severity: 'success',
+                        summary: 'Éxito',
+                        detail: 'Barbero Creado',
+                        life: 3000
+                    });
+                }
+                await loadBarberos();
+                setBarberoDialog(false);
+                setBarbero(emptyBarbero);
+            } catch (error) {
+                console.error("Error al guardar el barbero:", error);
                 toast.current?.show({
-                    severity: 'success',
-                    summary: 'Éxito',
-                    detail: 'Barbero Actualizado',
-                    life: 3000
-                });
-            } else {
-                _barbero.idBarbero = await getIdBarbero(_barbero);
-                _barberos.push(_barbero);
-                toast.current?.show({
-                    severity: 'success',
-                    summary: 'Éxito',
-                    detail: 'Barbero Creado',
+                    severity: 'error',
+                    summary: 'Error',
+                    detail: 'No se pudo guardar el barbero',
                     life: 3000
                 });
             }
-
-            setBarberos(_barberos);
-            setBarberoDialog(false);
-            setBarbero(emptyBarbero);
         }
-    };
-
-    const getIdBarbero = async (_barbero: Barbero) => {
-        let idBarbero = 0;
-        await BarberoService.create(_barbero).then((response)=>{
-            idBarbero = response.data.idBarbero;
-        }).catch(error=>{
-            console.log(error);
-        });
-        return idBarbero;
     };
 
     const editBarbero = async (barbero: Barbero) => {
@@ -258,30 +259,32 @@ export default function CRUDBarberoComponent() {
         setDeleteBarberoDialog(true);
     };
 
-    const deleteBarbero = () => {
-        const _barberos = barberos.filter((val)=> val.idBarbero !== barbero.idBarbero);
-        BarberoService.delete(barbero.idBarbero);
-        setBarberos(_barberos);
-        setDeleteBarberoDialog(false);
-        setBarbero(emptyBarbero);
-        toast.current?.show({
-            severity: 'success',
-            summary: 'Resultado',
-            detail: 'Barbero Eliminado',
-            life: 3000
-        });
+    const deleteBarbero = async () => {
+        try {
+            await BarberoService.delete(barbero.idBarbero);
+            await loadBarberos();
+            setDeleteBarberoDialog(false);
+            setBarbero(emptyBarbero);
+            toast.current?.show({
+                severity: 'success',
+                summary: 'Resultado',
+                detail: 'Barbero Eliminado',
+                life: 3000
+            });
+        } catch (error) {
+            console.error("Error al eliminar el barbero:", error);
+            toast.current?.show({
+                severity: 'error',
+                summary: 'Error',
+                detail: 'No se pudo eliminar el barbero',
+                life: 3000
+            });
+        }
     };
 
-    const findIndexById = (idBarbero: number) => {
-        let index = -1;
-        for (let i = 0; i < barberos.length; i++) {
-            if(barberos[i].idBarbero === idBarbero) {
-                index = i;
-                break;
-            }
-        }
-        return index;
-    };
+    // -------------------------------------------------------------
+    // Se ha eliminado la función findIndexById porque ya no se usa
+    // -------------------------------------------------------------
 
     const onInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const val = (e.target && e.target.value)||"";
@@ -308,45 +311,42 @@ export default function CRUDBarberoComponent() {
     const saveServicio = async () => {
         setSubmitted(true);
         if (servicio.descripcion.trim() && servicio.costo > 0) {
-            const _servicios = [...servicios];
-            const _servicio = {...servicio};
-
-            if (_servicio.idServicio) {
-                ServicioService.update(_servicio.idServicio, _servicio);
-                const index = findIndexServicioById(_servicio.idServicio);
-                _servicios[index] = _servicio;
+            try {
+                if (servicio.idServicio) {
+                    await ServicioService.update(servicio.idServicio, servicio);
+                    toast.current?.show({
+                        severity: 'success',
+                        summary: 'Éxito',
+                        detail: 'Servicio Actualizado',
+                        life: 3000
+                    });
+                } else {
+                    await ServicioService.create(servicio);
+                    toast.current?.show({
+                        severity: 'success',
+                        summary: 'Éxito',
+                        detail: 'Servicio Creado',
+                        life: 3000
+                    });
+                }
+                await loadServicios();
+                setServicioDialog(false);
+                setServicio(emptyServicio);
+            } catch (error) {
+                console.error("Error al guardar el servicio:", error);
                 toast.current?.show({
-                    severity: 'success',
-                    summary: 'Éxito',
-                    detail: 'Servicio Actualizado',
-                    life: 3000
-                });
-            } else {
-                _servicio.idServicio = await getIdServicio(_servicio);
-                _servicios.push(_servicio);
-                toast.current?.show({
-                    severity: 'success',
-                    summary: 'Éxito',
-                    detail: 'Servicio Creado',
+                    severity: 'error',
+                    summary: 'Error',
+                    detail: 'No se pudo guardar el servicio',
                     life: 3000
                 });
             }
-
-            setServicios(_servicios);
-            setServicioDialog(false);
-            setServicio(emptyServicio);
         }
     };
 
-    const getIdServicio = async (_servicio: Servicio) => {
-        let idServicio = 0;
-        await ServicioService.create(_servicio).then((response)=>{
-            idServicio = response.data.idServicio;
-        }).catch(error=>{
-            console.log(error);
-        });
-        return idServicio;
-    };
+    // -------------------------------------------------------------
+    // Se ha eliminado la función getIdServicio porque ya no se usa
+    // -------------------------------------------------------------
 
     const editServicio = (servicio: Servicio) => {
         setServicio({...servicio});
@@ -358,25 +358,22 @@ export default function CRUDBarberoComponent() {
         setDeleteServicioDialog(true);
     };
 
-    const deleteServicio = () => {
-        const _servicios = servicios.filter((val) => val.idServicio !== servicio.idServicio);
-        ServicioService.delete(servicio.idServicio);
-        setServicios(_servicios);
-        setDeleteServicioDialog(false);
-        setServicio(emptyServicio);
-        toast.current?.show({severity: 'success', summary: 'Resultado', detail: 'Servicio Eliminado', life: 3000});
+    const deleteServicio = async () => {
+        try {
+            await ServicioService.delete(servicio.idServicio);
+            await loadServicios();
+            setDeleteServicioDialog(false);
+            setServicio(emptyServicio);
+            toast.current?.show({severity: 'success', summary: 'Resultado', detail: 'Servicio Eliminado', life: 3000});
+        } catch (error) {
+            console.error("Error al eliminar el servicio:", error);
+            toast.current?.show({severity: 'error', summary: 'Error', detail: 'No se pudo eliminar el servicio', life: 3000});
+        }
     };
 
-    const findIndexServicioById = (idServicio: number) => {
-        let index = -1;
-        for (let i = 0; i < servicios.length; i++) {
-            if(servicios[i].idServicio === idServicio) {
-                index = i;
-                break;
-            }
-        }
-        return index;
-    };
+    // -------------------------------------------------------------
+    // Se ha eliminado la función findIndexServicioById porque ya no se usa
+    // -------------------------------------------------------------
 
     const onServicioInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const val = (e.target && e.target.value)||"";
