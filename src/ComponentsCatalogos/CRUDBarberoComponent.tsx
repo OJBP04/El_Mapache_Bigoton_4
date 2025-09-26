@@ -16,21 +16,18 @@ import { Column } from 'primereact/column';
 import { InputNumber } from 'primereact/inputnumber';
 
 interface Barbero {
-    idBarbero: number;
+    idBarbero: number | null;
     nombre: string;
 }
 
+// --- CAMBIO 1: Modificar la interfaz para aceptar `null` para el ID ---
 interface Servicio {
-    idServicio: number;
+    idServicio: number | null;
     descripcion: string;
     costo: number;
 }
 
-// -------------------------------------------------------------
-// Se ha eliminado el mock temporal de ServicioService
-// -------------------------------------------------------------
 
-// Estilos unificados para botones
 const buttonStyles = {
     add: {
         default: {
@@ -110,12 +107,13 @@ const handleButtonHover = (e: React.MouseEvent<HTMLButtonElement, MouseEvent>, b
 
 export default function CRUDBarberoComponent() {
     const emptyBarbero: Barbero = {
-        idBarbero: 0,
+        idBarbero: null,
         nombre: ''
     };
 
+    // --- CAMBIO 2: Cambiar el valor inicial de `idServicio` a `null` ---
     const emptyServicio: Servicio = {
-        idServicio: 0,
+        idServicio: null,
         descripcion: '',
         costo: 0
     };
@@ -141,7 +139,7 @@ export default function CRUDBarberoComponent() {
         { label: 'Catálogos', icon: 'pi pi-pen-to-square', url: '/catalogos' },
     ];
 
-    // Función para recargar los servicios desde el backend
+
     const loadServicios = async () => {
         try {
             const response = await ServicioService.findAll();
@@ -157,7 +155,7 @@ export default function CRUDBarberoComponent() {
         }
     };
 
-    // Función para recargar los barberos desde el backend
+
     const loadBarberos = async () => {
         try {
             const response = await BarberoService.findAll();
@@ -173,7 +171,6 @@ export default function CRUDBarberoComponent() {
         }
     };
 
-    // Al cargar el componente, llama a la API para obtener barberos y servicios
     useEffect(() => {
         loadBarberos();
         loadServicios();
@@ -261,16 +258,18 @@ export default function CRUDBarberoComponent() {
 
     const deleteBarbero = async () => {
         try {
-            await BarberoService.delete(barbero.idBarbero);
-            await loadBarberos();
-            setDeleteBarberoDialog(false);
-            setBarbero(emptyBarbero);
-            toast.current?.show({
-                severity: 'success',
-                summary: 'Resultado',
-                detail: 'Barbero Eliminado',
-                life: 3000
-            });
+            if (barbero.idBarbero !== null) {
+                await BarberoService.delete(barbero.idBarbero);
+                await loadBarberos();
+                setDeleteBarberoDialog(false);
+                setBarbero(emptyBarbero);
+                toast.current?.show({
+                    severity: 'success',
+                    summary: 'Resultado',
+                    detail: 'Barbero Eliminado',
+                    life: 3000
+                });
+            }
         } catch (error) {
             console.error("Error al eliminar el barbero:", error);
             toast.current?.show({
@@ -282,9 +281,6 @@ export default function CRUDBarberoComponent() {
         }
     };
 
-    // -------------------------------------------------------------
-    // Se ha eliminado la función findIndexById porque ya no se usa
-    // -------------------------------------------------------------
 
     const onInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const val = (e.target && e.target.value)||"";
@@ -310,8 +306,9 @@ export default function CRUDBarberoComponent() {
 
     const saveServicio = async () => {
         setSubmitted(true);
-        if (servicio.descripcion.trim() && servicio.costo > 0) {
+        if (servicio.descripcion.trim() && (servicio.costo || servicio.costo === 0)) { // --- CAMBIO 3: Validación para permitir costo 0
             try {
+                // Si `idServicio` es un número, actualiza
                 if (servicio.idServicio) {
                     await ServicioService.update(servicio.idServicio, servicio);
                     toast.current?.show({
@@ -321,6 +318,7 @@ export default function CRUDBarberoComponent() {
                         life: 3000
                     });
                 } else {
+                    // Si `idServicio` es nulo, crea uno nuevo
                     await ServicioService.create(servicio);
                     toast.current?.show({
                         severity: 'success',
@@ -344,10 +342,6 @@ export default function CRUDBarberoComponent() {
         }
     };
 
-    // -------------------------------------------------------------
-    // Se ha eliminado la función getIdServicio porque ya no se usa
-    // -------------------------------------------------------------
-
     const editServicio = (servicio: Servicio) => {
         setServicio({...servicio});
         setServicioDialog(true);
@@ -360,20 +354,19 @@ export default function CRUDBarberoComponent() {
 
     const deleteServicio = async () => {
         try {
-            await ServicioService.delete(servicio.idServicio);
-            await loadServicios();
-            setDeleteServicioDialog(false);
-            setServicio(emptyServicio);
-            toast.current?.show({severity: 'success', summary: 'Resultado', detail: 'Servicio Eliminado', life: 3000});
+            // --- CAMBIO 4: Asegurarse de que el ID no es nulo antes de eliminar
+            if (servicio.idServicio !== null) {
+                await ServicioService.delete(servicio.idServicio);
+                await loadServicios();
+                setDeleteServicioDialog(false);
+                setServicio(emptyServicio);
+                toast.current?.show({severity: 'success', summary: 'Resultado', detail: 'Servicio Eliminado', life: 3000});
+            }
         } catch (error) {
             console.error("Error al eliminar el servicio:", error);
             toast.current?.show({severity: 'error', summary: 'Error', detail: 'No se pudo eliminar el servicio', life: 3000});
         }
     };
-
-    // -------------------------------------------------------------
-    // Se ha eliminado la función findIndexServicioById porque ya no se usa
-    // -------------------------------------------------------------
 
     const onServicioInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const val = (e.target && e.target.value)||"";
@@ -1041,12 +1034,12 @@ export default function CRUDBarberoComponent() {
                             currency="MXN"
                             locale="es-MX"
                             required
-                            className={classNames({'p-invalid': submitted && !servicio.costo})}
+                            className={classNames({'p-invalid': submitted && (servicio.costo === null || servicio.costo < 0)})}
                             style={{
                                 borderRadius: '8px'
                             }}
                         />
-                        {submitted && !servicio.costo && <small className="p-error">El costo es requerido.</small>}
+                        {submitted && (servicio.costo === null || servicio.costo < 0) && <small className="p-error">El costo es requerido y debe ser mayor o igual a 0.</small>}
                     </div>
                 </Dialog>
 
