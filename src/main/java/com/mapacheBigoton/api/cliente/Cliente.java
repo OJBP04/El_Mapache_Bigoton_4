@@ -1,6 +1,7 @@
 package com.mapacheBigoton.api.cliente;
 
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.mapacheBigoton.api.cita.Cita;
 import jakarta.persistence.*;
 import lombok.*;
@@ -26,6 +27,7 @@ public class Cliente {
 
     // Relación con Cita
     @OneToMany(mappedBy = "cliente")
+    @JsonIgnore
     private List<Cita> citas;
 }
 

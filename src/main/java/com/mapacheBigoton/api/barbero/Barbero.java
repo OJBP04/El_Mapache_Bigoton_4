@@ -2,6 +2,7 @@ package com.mapacheBigoton.api.barbero;
 import com.mapacheBigoton.api.cita.Cita;
 import jakarta.persistence.*;
 import lombok.*;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 
 import java.util.List;
 
@@ -19,7 +20,9 @@ public class Barbero {
     @Column(nullable = false, length = 200)
     private String nombre;
 
+
     // Relación con Cita
     @OneToMany(mappedBy = "barbero")
+    @JsonIgnore
     private List<Cita> citas;
 }

@@ -1,5 +1,6 @@
 package com.mapacheBigoton.api.servicio;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.mapacheBigoton.api.cita.Cita;
 import jakarta.persistence.*;
 import lombok.*;
@@ -24,5 +25,6 @@ public class Servicio {
 
     // Un servicio puede estar en varias citas
     @OneToMany(mappedBy = "servicio")
+    @JsonIgnore
     private List<Cita> citas;
 }
