@@ -12,11 +12,11 @@ class CitaService {
     create(cita: object){
         return axios.post(URL_BASE, cita);
     }
-    update(idBarbero: number, cita: object){
-        return axios.put(URL_BASE + '/' + idBarbero, cita);
+    update(idCita: number, cita: object){
+        return axios.put(URL_BASE + '/' + idCita, cita);
     }
-    delete(idBarbero: number){
-        return axios.delete(URL_BASE + '/' + idBarbero);
+    delete(idCita: number){
+        return axios.delete(URL_BASE + '/' + idCita);
     }
 
 }

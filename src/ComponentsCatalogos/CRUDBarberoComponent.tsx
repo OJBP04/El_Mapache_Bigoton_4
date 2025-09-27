@@ -20,7 +20,6 @@ interface Barbero {
     nombre: string;
 }
 
-// --- CAMBIO 1: Modificar la interfaz para aceptar `null` para el ID ---
 interface Servicio {
     idServicio: number | null;
     descripcion: string;

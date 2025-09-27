@@ -12,11 +12,11 @@ class ClienteService {
     create(cliente: object){
         return axios.post(URL_BASE, cliente);
     }
-    update(idBarbero: number, cliente: object){
-        return axios.put(URL_BASE + '/' + idBarbero, cliente);
+    update(idCliente: number, cliente: object){
+        return axios.put(URL_BASE + '/' + idCliente, cliente);
     }
-    delete(idBarbero: number){
-        return axios.delete(URL_BASE + '/' + idBarbero);
+    delete(idCliente: number){
+        return axios.delete(URL_BASE + '/' + idCliente);
     }
 
 }

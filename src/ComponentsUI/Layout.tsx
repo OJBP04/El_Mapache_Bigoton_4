@@ -8,6 +8,9 @@ import { Dropdown } from 'primereact/dropdown';
 import { InputText } from 'primereact/inputtext';
 import { Button } from 'primereact/button';
 import { Card } from 'primereact/card';
+import { Dialog } from 'primereact/dialog';
+import { DataTable } from 'primereact/datatable';
+import { Column } from 'primereact/column';
 import { classNames } from "primereact/utils";
 import 'primereact/resources/primereact.min.css';
 import 'primeicons/primeicons.css';
@@ -42,6 +45,34 @@ interface Cliente {
     telefono: string;
 }
 
+interface Cita {
+    idCita: number;
+    fecha: string;
+    hora: string;
+    barbero: {
+        idBarbero: number;
+        nombre: string;
+    };
+    cliente: {
+        idCliente: number;
+        nombre: string;
+        telefono: string;
+    };
+    servicio: {
+        idServicio: number;
+        descripcion: string;
+        costo: number;
+    };
+}
+
+interface CalendarDate {
+    day: number;
+    month: number;
+    year: number;
+    today: boolean;
+    selectable: boolean;
+}
+
 export default function SidebarDemo() {
     const toast = useRef<Toast>(null);
     const [date, setDate] = useState<Nullable<Date>>(null);
@@ -54,27 +85,77 @@ export default function SidebarDemo() {
     const [hora, setHora] = useState<Nullable<Date>>(null);
     const [submitted, setSubmitted] = useState<boolean>(false);
 
+    const [citas, setCitas] = useState<Cita[]>([]);
+    const [citasDelDia, setCitasDelDia] = useState<Cita[]>([]);
+    const [showCitasDialog, setShowCitasDialog] = useState<boolean>(false);
+    const [fechasConCitas, setFechasConCitas] = useState<string[]>([]);
+
     const items: MenuItem[] = [
         { label: 'Agenda', icon: 'pi pi-calendar' },
         { label: 'Cátalogos', icon: 'pi pi-pen-to-square' , url: '/catalogos' },
     ];
 
-    useEffect(() => {
-        BarberoService.findAll().then((response) => {
-            const barberosFormateados = response.data.map((b: Barbero) => ({
-                idBarbero: b.idBarbero,
-                nombreBarbero: b.nombre
-            }));
-            setBarberos(barberosFormateados);
-        });
+    const loadCitas = async () => {
+        try {
+            const response = await CitaService.findAll();
+            if (response && response.data && Array.isArray(response.data)) {
+                setCitas(response.data);
+                const fechas = [...new Set(response.data.map((cita: Cita) => cita.fecha))];
+                setFechasConCitas(fechas);
+            } else {
+                setCitas([]);
+                setFechasConCitas([]);
+            }
+        } catch (error) {
+            console.error("Error al cargar las citas:", error);
+            setCitas([]);
+            setFechasConCitas([]);
+        }
+    };
 
-        ServicioService.findAll().then((response) => {
-            const serviciosFormateados = response.data.map((s: Servicio) => ({
-                idServicio: s.idServicio,
-                nombreServicio: s.descripcion
-            }));
-            setServicios(serviciosFormateados);
-        });
+    useEffect(() => {
+        const loadBarberosAndServicios = async () => {
+            try {
+                const [barberosResponse, serviciosResponse] = await Promise.all([
+                    BarberoService.findAll(),
+                    ServicioService.findAll()
+                ]);
+
+                if (Array.isArray(barberosResponse.data)) {
+                    const barberosFormateados = barberosResponse.data.map((b: Barbero) => ({
+                        idBarbero: b.idBarbero,
+                        nombreBarbero: b.nombre
+                    }));
+                    setBarberos(barberosFormateados);
+                } else {
+                    setBarberos([]);
+                }
+
+                if (Array.isArray(serviciosResponse.data)) {
+                    const serviciosFormateados = serviciosResponse.data.map((s: Servicio) => ({
+                        idServicio: s.idServicio,
+                        nombreServicio: s.descripcion
+                    }));
+                    setServicios(serviciosFormateados);
+                } else {
+                    setServicios([]);
+                }
+
+            } catch (error) {
+                console.error("Error al cargar los datos iniciales:", error);
+                setBarberos([]);
+                setServicios([]);
+                toast.current?.show({
+                    severity: 'error',
+                    summary: 'Error',
+                    detail: 'No se pudieron cargar los datos iniciales.',
+                    life: 5000
+                });
+            }
+        };
+
+        loadBarberosAndServicios();
+        loadCitas();
     }, []);
 
     const handleAgendarCita = async () => {
@@ -121,6 +202,8 @@ export default function SidebarDemo() {
             setHora(null);
             setSubmitted(false);
 
+            await loadCitas();
+
         } catch (error) {
             console.error("Error al agendar la cita:", error);
             toast.current?.show({
@@ -131,6 +214,82 @@ export default function SidebarDemo() {
             });
         }
     };
+
+    const dateTemplate = (date: CalendarDate) => {
+        const fechaString = `${date.year}-${String(date.month + 1).padStart(2, '0')}-${String(date.day).padStart(2, '0')}`;
+        const tieneCitas = fechasConCitas.includes(fechaString);
+
+        return (
+            <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+                <span>{date.day}</span>
+                {tieneCitas && (
+                    <div
+                        style={{
+                            position: 'absolute',
+                            top: '2px',
+                            right: '2px',
+                            width: '8px',
+                            height: '8px',
+                            backgroundColor: '#10b981',
+                            borderRadius: '50%',
+                            border: '1px solid white'
+                        }}
+                    />
+                )}
+            </div>
+        );
+    };
+
+    const handleDateSelect = (e: { value: Nullable<Date> }) => {
+        const fechaSeleccionada = e.value;
+        setDate(fechaSeleccionada);
+        setSelectedDate(fechaSeleccionada);
+
+        if (fechaSeleccionada) {
+            const fechaString = fechaSeleccionada.toISOString().split('T')[0];
+            const citasDelDiaSeleccionado = citas.filter(cita => cita.fecha === fechaString);
+
+            if (citasDelDiaSeleccionado.length > 0) {
+                setCitasDelDia(citasDelDiaSeleccionado);
+                setShowCitasDialog(true);
+            }
+        }
+    };
+
+    const horaBodyTemplate = (rowData: Cita) => {
+        return <span>{rowData.hora}</span>;
+    };
+
+    const barberoBodyTemplate = (rowData: Cita) => {
+        return <span>{rowData.barbero.nombre}</span>;
+    };
+
+    const clienteBodyTemplate = (rowData: Cita) => {
+        return (
+            <div>
+                <div style={{ fontWeight: 'bold' }}>{rowData.cliente.nombre}</div>
+                <div style={{ fontSize: '0.9em', color: '#666' }}>{rowData.cliente.telefono}</div>
+            </div>
+        );
+    };
+
+    const servicioBodyTemplate = (rowData: Cita) => {
+        return (
+            <div>
+                <div>{rowData.servicio.descripcion}</div>
+                <div style={{ fontSize: '0.9em', color: '#666' }}>${rowData.servicio.costo}</div>
+            </div>
+        );
+    };
+
+    const citasDialogFooter = (
+        <Button
+            label="Cerrar"
+            icon="pi pi-times"
+            onClick={() => setShowCitasDialog(false)}
+            className="p-button-text"
+        />
+    );
 
     return (
         <div style={{ display: 'flex' }}>
@@ -182,12 +341,10 @@ export default function SidebarDemo() {
                 }}>
                     <Calendar
                         value={date}
-                        onChange={(e) => {
-                            setDate(e.value);
-                            setSelectedDate(e.value);
-                        }}
+                        onChange={handleDateSelect}
                         inline
                         showWeek
+                        dateTemplate={dateTemplate}
                         style={{
                             width: '100%',
                             height: '100%'
@@ -297,6 +454,53 @@ export default function SidebarDemo() {
                     </Card>
                 </div>
             </div>
+
+            <Dialog
+                visible={showCitasDialog}
+                style={{ width: '70vw', maxWidth: '900px' }}
+                header={
+                    <div className="flex align-items-center gap-2">
+                        <i className="pi pi-calendar" style={{ color: '#10b981' }}></i>
+                        <span style={{ color: '#333', fontWeight: '600' }}>
+                            Citas del {selectedDate?.toLocaleDateString('es-MX')}
+                        </span>
+                    </div>
+                }
+                modal
+                footer={citasDialogFooter}
+                onHide={() => setShowCitasDialog(false)}
+            >
+                <DataTable
+                    value={citasDelDia}
+                    responsiveLayout="scroll"
+                    emptyMessage="No hay citas para este día"
+                >
+                    <Column
+                        field="hora"
+                        header="Hora"
+                        body={horaBodyTemplate}
+                        style={{ minWidth: '100px' }}
+                    />
+                    <Column
+                        field="barbero.nombre"
+                        header="Barbero"
+                        body={barberoBodyTemplate}
+                        style={{ minWidth: '150px' }}
+                    />
+                    <Column
+                        field="cliente"
+                        header="Cliente"
+                        body={clienteBodyTemplate}
+                        style={{ minWidth: '180px' }}
+                    />
+                    <Column
+                        field="servicio"
+                        header="Servicio"
+                        body={servicioBodyTemplate}
+                        style={{ minWidth: '180px' }}
+                    />
+                </DataTable>
+            </Dialog>
         </div>
     );
 }
