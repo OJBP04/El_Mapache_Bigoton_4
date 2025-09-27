@@ -12,6 +12,7 @@ import { Dialog } from 'primereact/dialog';
 import { DataTable } from 'primereact/datatable';
 import { Column } from 'primereact/column';
 import { classNames } from "primereact/utils";
+import { confirmDialog, ConfirmDialog } from 'primereact/confirmdialog';
 import 'primereact/resources/primereact.min.css';
 import 'primeicons/primeicons.css';
 import BarberoService from '../Services/BarberoService.tsx';
@@ -30,6 +31,11 @@ interface Servicio {
     costo: number;
 }
 
+interface Cliente {
+    nombre: string;
+    telefono: string;
+}
+
 interface FormattedBarbero {
     idBarbero: number | null;
     nombreBarbero: string;
@@ -38,11 +44,6 @@ interface FormattedBarbero {
 interface FormattedServicio {
     idServicio: number | null;
     nombreServicio: string;
-}
-
-interface Cliente {
-    nombre: string;
-    telefono: string;
 }
 
 interface Cita {
@@ -84,11 +85,19 @@ export default function SidebarDemo() {
     const [cliente, setCliente] = useState<Cliente>({ nombre: '', telefono: '' });
     const [hora, setHora] = useState<Nullable<Date>>(null);
     const [submitted, setSubmitted] = useState<boolean>(false);
-
     const [citas, setCitas] = useState<Cita[]>([]);
     const [citasDelDia, setCitasDelDia] = useState<Cita[]>([]);
     const [showCitasDialog, setShowCitasDialog] = useState<boolean>(false);
     const [fechasConCitas, setFechasConCitas] = useState<string[]>([]);
+    const [showEditDialog, setShowEditDialog] = useState<boolean>(false);
+    const [citaAEditar, setCitaAEditar] = useState<Cita | null>(null);
+    const [editData, setEditData] = useState({
+        barbero: null as FormattedBarbero | null,
+        servicio: null as FormattedServicio | null,
+        cliente: { nombre: '', telefono: '' },
+        fecha: null as Nullable<Date>,
+        hora: null as Nullable<Date>
+    });
 
     const items: MenuItem[] = [
         { label: 'Agenda', icon: 'pi pi-calendar' },
@@ -215,6 +224,136 @@ export default function SidebarDemo() {
         }
     };
 
+    const handleEditarCita = (cita: Cita) => {
+        setCitaAEditar(cita);
+
+        const barberoFormateado = barberos.find(b => b.idBarbero === cita.barbero.idBarbero);
+        const servicioFormateado = servicios.find(s => s.idServicio === cita.servicio.idServicio);
+
+        const fechaCita = new Date(cita.fecha + 'T00:00:00'); // Ajuste para evitar problemas de zona horaria
+
+        const [horas, minutos] = cita.hora.split(':');
+        const horaCita = new Date();
+        horaCita.setHours(parseInt(horas), parseInt(minutos), 0, 0);
+
+        setEditData({
+            barbero: barberoFormateado || null,
+            servicio: servicioFormateado || null,
+            cliente: {
+                nombre: cita.cliente.nombre,
+                telefono: cita.cliente.telefono
+            },
+            fecha: fechaCita,
+            hora: horaCita
+        });
+
+        setShowEditDialog(true);
+    };
+
+    const handleActualizarCita = async () => {
+        if (!citaAEditar || !editData.barbero || !editData.servicio ||
+            !editData.cliente.nombre.trim() || !editData.cliente.telefono.trim() ||
+            !editData.fecha || !editData.hora) {
+            toast.current?.show({
+                severity: 'error',
+                summary: 'Error',
+                detail: 'Por favor, complete todos los campos.',
+                life: 3000
+            });
+            return;
+        }
+
+        try {
+            const clienteActualizado = {
+                idCliente: citaAEditar.cliente.idCliente,
+                nombre: editData.cliente.nombre,
+                telefono: editData.cliente.telefono
+            };
+            await ClienteService.update(clienteActualizado.idCliente, clienteActualizado);
+
+            const citaActualizada = {
+                idCita: citaAEditar.idCita,
+                barbero: { idBarbero: editData.barbero.idBarbero },
+                servicio: { idServicio: editData.servicio.idServicio },
+                cliente: { idCliente: citaAEditar.cliente.idCliente },
+                fecha: editData.fecha.toISOString().split('T')[0],
+                hora: editData.hora.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })
+            };
+
+            const response = await CitaService.update(citaAEditar.idCita, citaActualizada);
+            const citaActualizadaData = response.data;
+
+            toast.current?.show({
+                severity: 'success',
+                summary: 'Éxito',
+                detail: 'Cita actualizada correctamente.',
+                life: 3000
+            });
+
+            setShowEditDialog(false);
+            setCitaAEditar(null);
+
+            // Actualizar la lista de citas del día en el estado
+            const citasDelDiaActualizadas = citasDelDia.map(c =>
+                c.idCita === citaAEditar.idCita ? citaActualizadaData : c
+            );
+            setCitasDelDia(citasDelDiaActualizadas);
+            await loadCitas();
+
+        } catch (error) {
+            console.error("Error al actualizar la cita:", error);
+            toast.current?.show({
+                severity: 'error',
+                summary: 'Error',
+                detail: 'No se pudo actualizar la cita. Intente de nuevo.',
+                life: 3000
+            });
+        }
+    };
+
+    const handleEliminarCita = (cita: Cita) => {
+        confirmDialog({
+            message: `¿Está seguro de eliminar la cita de ${cita.cliente.nombre} a las ${cita.hora}?`,
+            header: 'Confirmar Eliminación',
+            icon: 'pi pi-exclamation-triangle',
+            acceptClassName: 'p-button-danger',
+            acceptLabel: 'Sí, eliminar',
+            rejectLabel: 'Cancelar',
+            accept: async () => {
+                try {
+                    await CitaService.delete(cita.idCita);
+
+                    toast.current?.show({
+                        severity: 'success',
+                        summary: 'Éxito',
+                        detail: 'Cita eliminada correctamente.',
+                        life: 3000
+                    });
+
+                    // Actualizar la lista de citas del día para reflejar la eliminación
+                    const citasDelDiaActualizadas = citasDelDia.filter(c => c.idCita !== cita.idCita);
+                    setCitasDelDia(citasDelDiaActualizadas);
+
+                    // Recargar todas las citas para actualizar el calendario
+                    await loadCitas();
+
+                    if (citasDelDiaActualizadas.length === 0) {
+                        setShowCitasDialog(false);
+                    }
+
+                } catch (error) {
+                    console.error("Error al eliminar la cita:", error);
+                    toast.current?.show({
+                        severity: 'error',
+                        summary: 'Error',
+                        detail: 'No se pudo eliminar la cita. Intente de nuevo.',
+                        life: 3000
+                    });
+                }
+            }
+        });
+    };
+
     const dateTemplate = (date: CalendarDate) => {
         const fechaString = `${date.year}-${String(date.month + 1).padStart(2, '0')}-${String(date.day).padStart(2, '0')}`;
         const tieneCitas = fechasConCitas.includes(fechaString);
@@ -256,31 +395,43 @@ export default function SidebarDemo() {
         }
     };
 
-    const horaBodyTemplate = (rowData: Cita) => {
-        return <span>{rowData.hora}</span>;
-    };
+    const horaBodyTemplate = (rowData: Cita) => <span>{rowData.hora}</span>;
+    const barberoBodyTemplate = (rowData: Cita) => <span>{rowData.barbero.nombre}</span>;
 
-    const barberoBodyTemplate = (rowData: Cita) => {
-        return <span>{rowData.barbero.nombre}</span>;
-    };
+    const clienteBodyTemplate = (rowData: Cita) => (
+        <div>
+            <div style={{ fontWeight: 'bold' }}>{rowData.cliente.nombre}</div>
+            <div style={{ fontSize: '0.9em', color: '#666' }}>{rowData.cliente.telefono}</div>
+        </div>
+    );
 
-    const clienteBodyTemplate = (rowData: Cita) => {
-        return (
-            <div>
-                <div style={{ fontWeight: 'bold' }}>{rowData.cliente.nombre}</div>
-                <div style={{ fontSize: '0.9em', color: '#666' }}>{rowData.cliente.telefono}</div>
-            </div>
-        );
-    };
+    const servicioBodyTemplate = (rowData: Cita) => (
+        <div>
+            <div>{rowData.servicio.descripcion}</div>
+            <div style={{ fontSize: '0.9em', color: '#666' }}>${rowData.servicio.costo}</div>
+        </div>
+    );
 
-    const servicioBodyTemplate = (rowData: Cita) => {
-        return (
-            <div>
-                <div>{rowData.servicio.descripcion}</div>
-                <div style={{ fontSize: '0.9em', color: '#666' }}>${rowData.servicio.costo}</div>
-            </div>
-        );
-    };
+    const accionesBodyTemplate = (rowData: Cita) => (
+        <div className="flex gap-2 justify-content-center">
+            <Button
+                icon="pi pi-pencil"
+                rounded
+                outlined
+                className="p-button-success"
+                onClick={() => handleEditarCita(rowData)}
+                tooltip="Editar cita"
+            />
+            <Button
+                icon="pi pi-trash"
+                rounded
+                outlined
+                className="p-button-danger"
+                onClick={() => handleEliminarCita(rowData)}
+                tooltip="Eliminar cita"
+            />
+        </div>
+    );
 
     const citasDialogFooter = (
         <Button
@@ -291,8 +442,28 @@ export default function SidebarDemo() {
         />
     );
 
+    const editDialogFooter = (
+        <>
+            <Button
+                label="Cancelar"
+                icon="pi pi-times"
+                outlined
+                onClick={() => setShowEditDialog(false)}
+            />
+            <Button
+                label="Actualizar"
+                icon="pi pi-check"
+                onClick={handleActualizarCita}
+            />
+        </>
+    );
+
     return (
         <div style={{ display: 'flex' }}>
+            <Toast ref={toast} />
+            <ConfirmDialog />
+
+            {/* Topbar */}
             <div style={{
                 position: 'fixed',
                 top: 0,
@@ -312,6 +483,7 @@ export default function SidebarDemo() {
                 <i className="pi pi-bell" style={{ fontSize: '1.5rem' }}></i>
             </div>
 
+            {/* Sidebar */}
             <div style={{
                 width: '250px',
                 borderRight: '1px solid #ccc',
@@ -322,10 +494,10 @@ export default function SidebarDemo() {
                 left: 0,
                 padding: '1rem'
             }}>
-                <Toast ref={toast} />
                 <PanelMenu model={items} style={{ width: '100%' }} />
             </div>
 
+            {/* Main Content */}
             <div style={{
                 flexGrow: 1,
                 marginLeft: '100px',
@@ -335,171 +507,93 @@ export default function SidebarDemo() {
                 justifyContent: 'center',
                 gap: '3rem',
             }}>
-                <div style={{
-                    width: '750px',
-                    height: '560px'
-                }}>
+                {/* Calendar */}
+                <div style={{ width: '750px', height: '560px' }}>
                     <Calendar
                         value={date}
                         onChange={handleDateSelect}
                         inline
                         showWeek
                         dateTemplate={dateTemplate}
-                        style={{
-                            width: '100%',
-                            height: '100%'
-                        }}
+                        style={{ width: '100%', height: '100%' }}
                     />
                 </div>
-
-                <div style={{
-                    width: '320px',
-                }}>
+                <div style={{ width: '320px' }}>
                     <Card title="Nueva Cita">
-                        <div style={{ padding: '0.5rem' }}>
-                            <div className="p-field" style={{marginBottom: '0.5rem'}}>
-                                <label htmlFor="barbero" className="p-label" style={{ fontWeight: 'bold' }}>Barbero</label>
-                                <Dropdown
-                                    id="barbero"
-                                    value={selectedBarbero}
-                                    onChange={(e) => setSelectedBarbero(e.value)}
-                                    options={barberos}
-                                    optionLabel="nombreBarbero"
-                                    placeholder="Selecciona un barbero"
-                                    className={classNames({'p-invalid': submitted && !selectedBarbero})}
-                                    style={{ width: '100%' }}
-                                />
+                        <div className="p-fluid" style={{ padding: '0.5rem' }}>
+                            <div className="field mb-3">
+                                <label htmlFor="barbero" className="font-bold">Barbero</label>
+                                <Dropdown id="barbero" value={selectedBarbero} onChange={(e) => setSelectedBarbero(e.value)} options={barberos} optionLabel="nombreBarbero" placeholder="Selecciona un barbero" className={classNames({'p-invalid': submitted && !selectedBarbero})} />
                                 {submitted && !selectedBarbero && <small className="p-error">El barbero es requerido.</small>}
                             </div>
-
-                            <div className="p-field" style={{marginBottom: '0.5rem'}}>
-                                <label htmlFor="servicio" className="p-label" style={{ fontWeight: 'bold' }}>Servicio</label>
-                                <Dropdown
-                                    id="servicio"
-                                    value={selectedServicio}
-                                    onChange={(e) => setSelectedServicio(e.value)}
-                                    options={servicios}
-                                    optionLabel="nombreServicio"
-                                    placeholder="Selecciona un servicio"
-                                    className={classNames({'p-invalid': submitted && !selectedServicio})}
-                                    style={{ width: '100%' }}
-                                />
+                            <div className="field mb-3">
+                                <label htmlFor="servicio" className="font-bold">Servicio</label>
+                                <Dropdown id="servicio" value={selectedServicio} onChange={(e) => setSelectedServicio(e.value)} options={servicios} optionLabel="nombreServicio" placeholder="Selecciona un servicio" className={classNames({'p-invalid': submitted && !selectedServicio})} />
                                 {submitted && !selectedServicio && <small className="p-error">El servicio es requerido.</small>}
                             </div>
-
-                            <div className="p-field" style={{marginBottom: '0.5rem'}}>
-                                <label htmlFor="nombreCliente" className="p-label" style={{ fontWeight: 'bold' }}>Nombre del Cliente</label>
-                                <InputText
-                                    id="nombreCliente"
-                                    value={cliente.nombre}
-                                    onChange={(e) => setCliente({...cliente, nombre: e.target.value})}
-                                    placeholder="Nombre del cliente"
-                                    className={classNames({'p-invalid': submitted && !cliente.nombre.trim()})}
-                                    style={{ width: '100%' }}
-                                />
+                            <div className="field mb-3">
+                                <label htmlFor="nombreCliente" className="font-bold">Nombre del Cliente</label>
+                                <InputText id="nombreCliente" value={cliente.nombre} onChange={(e) => setCliente({...cliente, nombre: e.target.value})} placeholder="Nombre del cliente" className={classNames({'p-invalid': submitted && !cliente.nombre.trim()})} />
                                 {submitted && !cliente.nombre.trim() && <small className="p-error">El nombre es requerido.</small>}
                             </div>
-
-                            <div className="p-field" style={{marginBottom: '0.5rem'}}>
-                                <label htmlFor="telefono" className="p-label" style={{ fontWeight: 'bold' }}>Teléfono del Cliente</label>
-                                <InputText
-                                    id="telefono"
-                                    type="tel"
-                                    value={cliente.telefono}
-                                    onChange={(e) => setCliente({...cliente, telefono: e.target.value})}
-                                    placeholder="Teléfono del cliente"
-                                    className={classNames({'p-invalid': submitted && !cliente.telefono.trim()})}
-                                    style={{ width: '100%' }}
-                                />
+                            <div className="field mb-3">
+                                <label htmlFor="telefono" className="font-bold">Teléfono del Cliente</label>
+                                <InputText id="telefono" type="tel" value={cliente.telefono} onChange={(e) => setCliente({...cliente, telefono: e.target.value})} placeholder="Teléfono del cliente" className={classNames({'p-invalid': submitted && !cliente.telefono.trim()})} />
                                 {submitted && !cliente.telefono.trim() && <small className="p-error">El teléfono es requerido.</small>}
                             </div>
-
-                            <div className="p-field" style={{marginBottom: '0.5rem'}}>
-                                <label htmlFor="fecha" className="p-label" style={{ fontWeight: 'bold' }}>Fecha de la Cita</label>
-                                <Calendar
-                                    id="fecha"
-                                    value={selectedDate}
-                                    onChange={(e) => setSelectedDate(e.value)}
-                                    dateFormat="dd/M/yy"
-                                    readOnlyInput
-                                    className={classNames({'p-invalid': submitted && !selectedDate})}
-                                    style={{ width: '100%' }}
-                                />
+                            <div className="field mb-3">
+                                <label htmlFor="fecha" className="font-bold">Fecha de la Cita</label>
+                                <Calendar id="fecha" value={selectedDate} onChange={(e) => setSelectedDate(e.value)} dateFormat="dd/M/yy" readOnlyInput className={classNames({'p-invalid': submitted && !selectedDate})} />
                                 {submitted && !selectedDate && <small className="p-error">La fecha es requerida.</small>}
                             </div>
-
-                            <div className="p-field" style={{marginBottom: '0.5rem'}}>
-                                <label htmlFor="hora" className="p-label" style={{ fontWeight: 'bold' }}>Hora de la Cita</label>
-                                <Calendar
-                                    id="hora"
-                                    value={hora}
-                                    onChange={(e) => setHora(e.value)}
-                                    timeOnly
-                                    hourFormat="12"
-                                    className={classNames({'p-invalid': submitted && !hora})}
-                                    style={{ width: '100%' }}
-                                />
+                            <div className="field mb-3">
+                                <label htmlFor="hora" className="font-bold">Hora de la Cita</label>
+                                <Calendar id="hora" value={hora} onChange={(e) => setHora(e.value)} timeOnly hourFormat="12" className={classNames({'p-invalid': submitted && !hora})} />
                                 {submitted && !hora && <small className="p-error">La hora es requerida.</small>}
                             </div>
-
-                            <div className="text-center" style={{paddingTop: '0.5rem'}}>
-                                <Button
-                                    label="Agendar Cita"
-                                    icon="pi pi-check"
-                                    onClick={handleAgendarCita}
-                                    style={{ width: '100%' }}
-                                />
+                            <div className="text-center mt-2">
+                                <Button label="Agendar Cita" icon="pi pi-check" onClick={handleAgendarCita} />
                             </div>
                         </div>
                     </Card>
                 </div>
             </div>
 
-            <Dialog
-                visible={showCitasDialog}
-                style={{ width: '70vw', maxWidth: '900px' }}
-                header={
-                    <div className="flex align-items-center gap-2">
-                        <i className="pi pi-calendar" style={{ color: '#10b981' }}></i>
-                        <span style={{ color: '#333', fontWeight: '600' }}>
-                            Citas del {selectedDate?.toLocaleDateString('es-MX')}
-                        </span>
-                    </div>
-                }
-                modal
-                footer={citasDialogFooter}
-                onHide={() => setShowCitasDialog(false)}
-            >
-                <DataTable
-                    value={citasDelDia}
-                    responsiveLayout="scroll"
-                    emptyMessage="No hay citas para este día"
-                >
-                    <Column
-                        field="hora"
-                        header="Hora"
-                        body={horaBodyTemplate}
-                        style={{ minWidth: '100px' }}
-                    />
-                    <Column
-                        field="barbero.nombre"
-                        header="Barbero"
-                        body={barberoBodyTemplate}
-                        style={{ minWidth: '150px' }}
-                    />
-                    <Column
-                        field="cliente"
-                        header="Cliente"
-                        body={clienteBodyTemplate}
-                        style={{ minWidth: '180px' }}
-                    />
-                    <Column
-                        field="servicio"
-                        header="Servicio"
-                        body={servicioBodyTemplate}
-                        style={{ minWidth: '180px' }}
-                    />
+            <Dialog visible={showCitasDialog} style={{ width: '80vw', maxWidth: '1000px' }} header={<div className="flex align-items-center gap-2"><i className="pi pi-calendar" style={{ color: '#10b981' }}></i><span style={{ color: '#333', fontWeight: '600' }}>Citas del {selectedDate?.toLocaleDateString('es-MX')}</span></div>} modal footer={citasDialogFooter} onHide={() => setShowCitasDialog(false)}>
+                <DataTable value={citasDelDia} responsiveLayout="scroll" emptyMessage="No hay citas para este día">
+                    <Column field="hora" header="Hora" body={horaBodyTemplate} style={{ minWidth: '100px' }} />
+                    <Column field="barbero.nombre" header="Barbero" body={barberoBodyTemplate} style={{ minWidth: '150px' }} />
+                    <Column field="cliente" header="Cliente" body={clienteBodyTemplate} style={{ minWidth: '180px' }} />
+                    <Column field="servicio" header="Servicio" body={servicioBodyTemplate} style={{ minWidth: '180px' }} />
+                    <Column header="Acciones" body={accionesBodyTemplate} style={{ minWidth: '8rem', textAlign: 'center' }} />
                 </DataTable>
+            </Dialog>
+
+            <Dialog visible={showEditDialog} style={{ width: '32rem' }} breakpoints={{ '960px': '75vw', '641px': '90vw' }} header="Editar Cita" modal className="p-fluid" footer={editDialogFooter} onHide={() => setShowEditDialog(false)}>
+                <div className="field mb-3">
+                    <label htmlFor="edit-barbero" className="font-bold">Barbero</label>
+                    <Dropdown id="edit-barbero" value={editData.barbero} onChange={(e) => setEditData({...editData, barbero: e.value})} options={barberos} optionLabel="nombreBarbero" placeholder="Selecciona un barbero" />
+                </div>
+                <div className="field mb-3">
+                    <label htmlFor="edit-servicio" className="font-bold">Servicio</label>
+                    <Dropdown id="edit-servicio" value={editData.servicio} onChange={(e) => setEditData({...editData, servicio: e.value})} options={servicios} optionLabel="nombreServicio" placeholder="Selecciona un servicio" />
+                </div>
+                <div className="field mb-3">
+                    <label htmlFor="edit-nombre" className="font-bold">Nombre del Cliente</label>
+                    <InputText id="edit-nombre" value={editData.cliente.nombre} onChange={(e) => setEditData({ ...editData, cliente: {...editData.cliente, nombre: e.target.value} })} placeholder="Nombre del cliente" />
+                </div>
+                <div className="field mb-3">
+                    <label htmlFor="edit-telefono" className="font-bold">Teléfono del Cliente</label>
+                    <InputText id="edit-telefono" value={editData.cliente.telefono} onChange={(e) => setEditData({ ...editData, cliente: {...editData.cliente, telefono: e.target.value} })} placeholder="Teléfono del cliente" />
+                </div>
+                <div className="field mb-3">
+                    <label htmlFor="edit-fecha" className="font-bold">Fecha de la Cita</label>
+                    <Calendar id="edit-fecha" value={editData.fecha} onChange={(e) => setEditData({...editData, fecha: e.value})} dateFormat="dd/M/yy" />
+                </div>
+                <div className="field mb-3">
+                    <label htmlFor="edit-hora" className="font-bold">Hora de la Cita</label>
+                    <Calendar id="edit-hora" value={editData.hora} onChange={(e) => setEditData({...editData, hora: e.value})} timeOnly hourFormat="12" />
+                </div>
             </Dialog>
         </div>
     );

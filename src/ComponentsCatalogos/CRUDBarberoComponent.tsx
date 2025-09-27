@@ -86,7 +86,6 @@ const buttonStyles = {
     }
 };
 
-// Función para manejar hover de botones
 const handleButtonHover = (e: React.MouseEvent<HTMLButtonElement, MouseEvent>, buttonType: keyof typeof buttonStyles, isHovering: boolean) => {
     const style = e.currentTarget.style;
     const styleConfig = buttonStyles[buttonType];
@@ -110,7 +109,6 @@ export default function CRUDBarberoComponent() {
         nombre: ''
     };
 
-    // --- CAMBIO 2: Cambiar el valor inicial de `idServicio` a `null` ---
     const emptyServicio: Servicio = {
         idServicio: null,
         descripcion: '',
@@ -305,9 +303,9 @@ export default function CRUDBarberoComponent() {
 
     const saveServicio = async () => {
         setSubmitted(true);
-        if (servicio.descripcion.trim() && (servicio.costo || servicio.costo === 0)) { // --- CAMBIO 3: Validación para permitir costo 0
+        if (servicio.descripcion.trim() && (servicio.costo || servicio.costo === 0)) {
             try {
-                // Si `idServicio` es un número, actualiza
+
                 if (servicio.idServicio) {
                     await ServicioService.update(servicio.idServicio, servicio);
                     toast.current?.show({
@@ -317,7 +315,7 @@ export default function CRUDBarberoComponent() {
                         life: 3000
                     });
                 } else {
-                    // Si `idServicio` es nulo, crea uno nuevo
+
                     await ServicioService.create(servicio);
                     toast.current?.show({
                         severity: 'success',
@@ -353,7 +351,7 @@ export default function CRUDBarberoComponent() {
 
     const deleteServicio = async () => {
         try {
-            // --- CAMBIO 4: Asegurarse de que el ID no es nulo antes de eliminar
+
             if (servicio.idServicio !== null) {
                 await ServicioService.delete(servicio.idServicio);
                 await loadServicios();
