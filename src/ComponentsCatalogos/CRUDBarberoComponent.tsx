@@ -135,7 +135,7 @@ export default function CRUDBarberoComponent() {
     const [editMode, setEditMode] = useState<boolean>(false);
 
     const sidebarItems: MenuItem[] = [
-        { label: 'Agenda', icon: 'pi pi-calendar' },
+        { label: 'Agenda', icon: 'pi pi-calendar', url:'/' },
         { label: 'Catálogos', icon: 'pi pi-pen-to-square', url: '/catalogos' },
     ];
 
